@@ -14,16 +14,16 @@ function Stream() {
 var simulationWidth = 500;
 var simulationHeight = 500;
 
-let simulation = new Simulation(0, 10, 300, 300, 1);
-let simulation2 = new Simulation(0, 400, 300, 300, 0.2);
+let simulation = new Simulation(0, 10, 300, 300, 1, "#ff9933", [35]);
+let simulation2 = new Simulation(0, 400, 300, 300, 0.2, "#cc00ff", [35]);
 
-let graph = new Graph(800, 700, 600);
+let graph = new Graph(800, 700, 600, [35]);
 
 function draw() {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	simulation.draw();
 	simulation2.draw();
-	graph.refresh({...simulation.state.infections.data, ...simulation2.state.infections.data});
+	graph.refresh([simulation.state.infections.data, simulation2.state.infections.data], [simulation.color, simulation2.color]);
 }
 setInterval(draw, 10);
 
@@ -48,7 +48,7 @@ function maybeHappen(prob) {
 }
 
 
-function Simulation(x, y, width, height, percentMoving) {
+function Simulation(x, y, width, height, percentMoving, color, criticalValue) {
 	this.x = x;
 	this.y = y;
 	this.width = width;
@@ -57,13 +57,15 @@ function Simulation(x, y, width, height, percentMoving) {
 	this.graphGap = 20;
 	this.infectionProb = 0.10;
 	this.deathProb = 0.05;
+	this.color = color;
+	this.criticalValue = criticalValue;
 	
 	this.state = {
 		ticks: 0,
 		sick: 1,
 		collisions: 0,
 		infections: new InfectionData(),
-		graph: new Graph(this.x+this.width+this.graphGap, this.y+this.height, this.width),
+		graph: new Graph(this.x+this.width+this.graphGap, this.y+this.height, this.width, [this.criticalValue]),
 	};
 
 	this.stream = new Stream();
@@ -108,28 +110,24 @@ function Simulation(x, y, width, height, percentMoving) {
 			default:
 				break;
 		}
+		this.state.graph.refresh([this.state.infections.data], [color]);
 	}
 	this.stream.subscribe(this.infectionCounter.bind(this));
 
-	this.graphUpdater = function(action) {
-		switch(action) {
-			case "init":
-			case "infection":
-			case "immune":
-			case "death":
-				this.state.graph.refresh(this.state.infections.data);
-				break;
-			default:
-				break;
+	this.getDeathProb = function() {
+		if(this.state.sick > this.criticalValue) {
+			console.log("above");
+			return this.deathProb+0.20;
+		}
+		else {
+			return this.deathProb;
 		}
 	}
-	this.stream.subscribe(this.graphUpdater.bind(this));
 
 	this.numOfPeople = 50;
 	this.people = [];
 	for(let i = 0; i < this.numOfPeople; i++) {
-		let person = new Person(maybeHappen(this.moveProb), this.x, this.y, this.width, this.height);
-		console.log(person);
+		let person = new Person(maybeHappen(this.moveProb), this.getDeathProb.bind(this), this.x, this.y, this.width, this.height);
 		person.stream.subscribe(this.stream.dispatch.bind(this.stream));
 		this.people.push(person);
 	}
@@ -189,26 +187,30 @@ function Simulation(x, y, width, height, percentMoving) {
 	}
 }
 
-function Graph(x, y, length) {
+function Graph(x, y, length, criticalHeights) {
 	this.axisThickness = 1;
 	this.axisLength = length;
 	this.originX = x;
 	this.originY = y;
 	this.scaleX = 1;
 	this.scaleY = 1;
-	this.pointRadius = 1.5;
-	this.data = {};
+	this.pointRadius = 3;
+	this.datasets = [];
+	this.colors = [];
+	this.criticalHeights = criticalHeights;
 	this.calculateScale = function() {
 		let maxY = 0;
 		let maxX = 0;
-		for(let[x, y] of Object.entries(this.data)) {
-			if(Number(y) > maxY) {
-			maxY = y;
+		this.datasets.forEach(data => {
+			for(let[x, y] of Object.entries(data)) {
+				if(Number(y) > maxY) {
+					maxY = y;
+				}
+				if(Number(x) > maxX) {
+					maxX = x;
+				}
 			}
-			if(Number(x) > maxX) {
-				maxX = x;
-			}
-		}
+		});
 		this.scaleX = this.axisLength/maxX;
 		this.scaleY = this.axisLength/maxY;
 	};
@@ -223,26 +225,41 @@ function Graph(x, y, length) {
 		ctx.fillStyle = "#000000"
 		ctx.fillRect(this.originX,this.originY,this.axisThickness,-this.axisLength);
 
-		function drawPoint(x, y, radius) {
+		ctx.beginPath()
+		ctx.fillStyle = "#cc0000"
+		criticalHeights.forEach(height => {
+			if(this.originY-height*this.scaleY >= this.originY-this.axisLength) {
+				ctx.fillRect(this.originX,this.originY-height*this.scaleY,this.axisLength,this.axisThickness)
+			}
+		});
+
+		function drawPoint(x, y, radius, color) {
 			ctx.beginPath();
-			ctx.fillStyle = "#000000"
+			ctx.fillStyle = color; 
 			ctx.arc(x,y,radius,0,Math.PI*2);
 			ctx.fill();
 		}
-
-		for(let [x, y] of Object.entries(this.data)) {
-			drawPoint(Number(x)*this.scaleX+this.originX,-Number(y)*this.scaleY+this.originY,this.pointRadius);	
-		}
+		
+		let i = 0
+		this.datasets.forEach(data => {
+			let color = this.colors[i];
+			for(let [x, y] of Object.entries(data)) {
+				drawPoint(Number(x)*this.scaleX+this.originX,-Number(y)*this.scaleY+this.originY,this.pointRadius, color);	
+			}
+			i++;
+		});
 	};
-	this.refresh = function(data) {
-		this.data = data;
+	this.refresh = function(datasets, colors) {
+		this.datasets = datasets;
+		this.colors = colors;
 		this.calculateScale();
 		this.draw();
 	};
 }
 
-function Person(isMoving, simX, simY, simWidth, simHeight) {
+function Person(isMoving, getDeathProb, simX, simY, simWidth, simHeight) {
 	this.isMoving = isMoving;
+	this.getDeathProb = getDeathProb;
 	this.simX = simX;
 	this.simY = simY;
 	this.simWidth = simWidth;
@@ -270,7 +287,8 @@ function Person(isMoving, simX, simY, simWidth, simHeight) {
 
 		if(this.sick && this.sickTicks > this.sicknessDuration*100) {
 			this.sick = false;
-			if(maybeHappen(this.deathProb)) {
+			console.log(this.getDeathProb());
+			if(maybeHappen(this.getDeathProb())) {
 				this.dead = true;
 				this.stream.dispatch("death");
 			}
