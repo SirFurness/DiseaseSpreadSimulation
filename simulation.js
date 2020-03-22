@@ -11,9 +11,6 @@ function Stream() {
 	};
 }
 
-var simulationWidth = 500;
-var simulationHeight = 500;
-
 let simulation = new Simulation(0, 10, 300, 300, 1, "#ff9933", [35]);
 let simulation2 = new Simulation(0, 400, 300, 300, 0.2, "#cc00ff", [35]);
 
@@ -116,7 +113,6 @@ function Simulation(x, y, width, height, percentMoving, color, criticalValue) {
 
 	this.getDeathProb = function() {
 		if(this.state.sick > this.criticalValue) {
-			console.log("above");
 			return this.deathProb+0.20;
 		}
 		else {
@@ -287,7 +283,6 @@ function Person(isMoving, getDeathProb, simX, simY, simWidth, simHeight) {
 
 		if(this.sick && this.sickTicks > this.sicknessDuration*100) {
 			this.sick = false;
-			console.log(this.getDeathProb());
 			if(maybeHappen(this.getDeathProb())) {
 				this.dead = true;
 				this.stream.dispatch("death");
