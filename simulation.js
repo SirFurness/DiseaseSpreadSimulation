@@ -155,7 +155,7 @@ function Simulation(x, y, width, height, percentMoving, color, criticalValue) {
 			for(let j = 0; j < people.length; j++) {
 				let person = people[j];
 
-				if(i == j || person.sick || person.immune || person.collidingWith.includes(i)) {
+				if(i == j || person.sick || person.immune || person.dead || person.collidingWith.includes(i)) {
 					continue;
 				}
 
